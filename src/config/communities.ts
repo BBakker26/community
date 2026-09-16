@@ -75,6 +75,14 @@ export const COMMUNITIES: CommunityConfig[] = [
     ],
     website: 'https://lacrypta.ar/',
   },
+  {
+    pubkey: 'npub1mg36x8t42usn32upfxg35ppzfqf2xj76v7w2hf7trqj0ma79jtkqrj3q9m',
+    region: 'Europa',
+    social: [
+      { type: 'telegram', url: 'https://t.me/MostroEuropaCommunity' },
+    ],
+    website: 'https://mostroeuropa.github.io/',
+  },
 ];
 
 /** Default Mostro relay for fetching community metadata */
