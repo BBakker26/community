@@ -80,7 +80,6 @@ export const COMMUNITIES: CommunityConfig[] = [
     region: 'Europa',
     social: [
       { type: 'telegram', url: 'https://t.me/MostroEuropaCommunity' },
-      { type: 'nostr', url: 'https://njump.me/npub1mg36x8t42usn32upfxg35ppzfqf2xj76v7w2hf7trqj0ma79jtkqrj3q9m' },
     ],
     website: 'https://mostroeuropa.github.io/',
   },
