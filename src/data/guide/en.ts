@@ -351,16 +351,21 @@ chmod 600 ~/mostro-config/lnd/mostro.macaroon</code></pre>
 
       <p>🎉 <strong>Congratulations!</strong> If you see successful connections in the logs, your Mostro node is running!</p>
 
-      <h4>Updating (Docker Hub)</h4>
-      <pre><code>export MOSTRO_TAG={{version}}
-docker pull mostrop2p/mostro:$MOSTRO_TAG
-docker stop mostro
-docker rm mostro
-docker run -d --name mostro \\
-  --restart unless-stopped \\
-  --add-host=host.docker.internal:host-gateway \\
-  -v ~/mostro-config:/config \\
-  mostrop2p/mostro:$MOSTRO_TAG</code></pre>
+      <h4>Alternative: Docker Compose</h4>
+      <p>Instead of a long <code>docker run</code> command you can describe the container in a compose file. It runs the same image with the same settings, and updating becomes a one-line tag change. Create <code>~/mostro-docker/compose.yml</code>:</p>
+      <pre><code>services:
+  mostro:
+    image: mostrop2p/mostro:{{version}}
+    container_name: mostro
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # only if LND runs on this VPS
+    volumes:
+      - \${HOME}/mostro-config:/config</code></pre>
+      <p>Start it and follow the logs:</p>
+      <pre><code>docker compose -f ~/mostro-docker/compose.yml up -d
+docker compose -f ~/mostro-docker/compose.yml logs -f mostro</code></pre>
+      <p>Pick one: <code>docker run</code> <strong>or</strong> compose, not both. To update either of them, see 5.5.</p>
 
       <div class="callout security">
         <div class="callout-title">🔒 Security Note</div>
@@ -950,18 +955,43 @@ nostreq --kinds 38385 --limit 1 --authors YOUR_MOSTRO_PUBKEY_HEX \\
     'updating': {
       title: `5.5 Updating Mostro`,
       nav: `Updating`,
-      html: `      <p><strong>Docker Hub:</strong></p>
+      html: `      <p>Updating replaces the <code>mostrod</code> binary and nothing else: <code>settings.toml</code> and <code>mostro.db</code> stay where they are. Database migrations run on their own when the new version starts, so there is no extra step.</p>
+
+      <h4>Before you update</h4>
+      <ol>
+        <li><strong>Read the <a href="https://github.com/MostroP2P/mostro/releases" target="_blank" rel="noopener noreferrer">release notes</a></strong> of the version you are moving to. Your <code>settings.toml</code> is never overwritten, so a new option only takes effect once you add it: compare your file with the new <code>settings.tpl.toml</code>.</li>
+        <li><strong>Back up the database</strong> with the commands in 5.6. You need that backup to roll back.</li>
+      </ol>
+
+      <h4>Docker Hub (<code>docker run</code>)</h4>
       <pre><code>export MOSTRO_TAG={{version}}
+# Pull first: the running node stays up during the download
+docker pull mostrop2p/mostro:$MOSTRO_TAG
 docker stop mostro
 docker rm mostro
-docker pull mostrop2p/mostro:$MOSTRO_TAG
 docker run -d --name mostro \\
   --restart unless-stopped \\
   --add-host=host.docker.internal:host-gateway \\
   -v ~/mostro-config:/config \\
   mostrop2p/mostro:$MOSTRO_TAG</code></pre>
+      <p>Use the same flags you installed with (drop <code>--add-host</code> if LND is on another server). If you don't remember them, check <code>docker inspect mostro</code> before removing the container.</p>
 
-      <p><strong>Docker Build:</strong></p>
+      <div class="callout important">
+        <div class="callout-title">⚠️ <code>docker restart</code> is not an update</div>
+        <p><code>docker restart</code> starts the same container again, from the image it was created with. To run a new version the container has to be created again: <code>docker rm</code> + <code>docker run</code>, or <code>docker compose up -d</code> after changing the tag.</p>
+      </div>
+
+      <h4>Docker Hub (Docker Compose)</h4>
+      <pre><code>export MOSTRO_TAG={{version}}
+COMPOSE=~/mostro-docker/compose.yml
+# Point the image line at the new tag, and check it
+sed -i "s|image: mostrop2p/mostro:.*|image: mostrop2p/mostro:$MOSTRO_TAG|" $COMPOSE
+grep image: $COMPOSE
+docker compose -f $COMPOSE pull
+# Recreates the container because the image changed
+docker compose -f $COMPOSE up -d</code></pre>
+
+      <h4>Docker Build</h4>
       <pre><code>cd /opt/mostro
 git fetch --tags
 git checkout {{version}}
@@ -969,7 +999,7 @@ make docker-build
 make docker-down
 make docker-up</code></pre>
 
-      <p><strong>Native:</strong></p>
+      <h4>Native</h4>
       <pre><code>cd /opt/mostro
 git fetch --tags
 git checkout {{version}}
@@ -978,10 +1008,30 @@ install target/release/mostrod /usr/local/bin
 cargo clean
 systemctl restart mostro.service</code></pre>
 
-      <div class="callout tip">
-        <div class="callout-title">💡 Tip</div>
-        <p>Always back up your database before updating.</p>
-      </div>
+      <h4>Check the new version</h4>
+      <pre><code># Docker Hub (docker run)
+docker exec mostro mostrod --version
+docker logs -f mostro
+
+# Docker Hub (Docker Compose)
+docker compose -f ~/mostro-docker/compose.yml exec mostro mostrod --version
+docker compose -f ~/mostro-docker/compose.yml logs -f mostro
+
+# Docker Build
+docker compose -f /opt/mostro/docker/compose.yml exec mostro mostrod --version
+docker compose -f /opt/mostro/docker/compose.yml logs -f mostro</code></pre>
+      <p>Look for the same startup messages as on the first run (Step 11 of Option A).</p>
+
+      <h4>Rolling back</h4>
+      <p>If the new version misbehaves, go back to the previous tag. The new version may already have migrated the database, and an older <code>mostrod</code> can refuse to start with it, so restore the backup you took before updating:</p>
+      <pre><code>docker stop mostro
+docker rm mostro
+cp /root/mostro-backups/mostro.db.&lt;YYYYMMDD&gt; ~/mostro-config/mostro.db
+rm -f ~/mostro-config/mostro.db-wal ~/mostro-config/mostro.db-shm
+chown 1000:1000 ~/mostro-config/mostro.db
+# then start the previous tag: same docker run command,
+# or put the old tag back in compose.yml and run docker compose up -d</code></pre>
+      <p>Docker Build and native work the same way: check out the previous tag, rebuild, and restore the database before starting.</p>
 
       <div class="callout important">
         <div class="callout-title">⚠️ Don't change Lightning nodes at the same time</div>

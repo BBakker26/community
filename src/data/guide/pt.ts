@@ -351,16 +351,21 @@ chmod 600 ~/mostro-config/lnd/mostro.macaroon</code></pre>
 
       <p>🎉 <strong>Parabéns!</strong> Se vir conexões bem-sucedidas nos logs, seu nó Mostro está funcionando!</p>
 
-      <h4>Atualização (Docker Hub)</h4>
-      <pre><code>export MOSTRO_TAG={{version}}
-docker pull mostrop2p/mostro:$MOSTRO_TAG
-docker stop mostro
-docker rm mostro
-docker run -d --name mostro \\
-  --restart unless-stopped \\
-  --add-host=host.docker.internal:host-gateway \\
-  -v ~/mostro-config:/config \\
-  mostrop2p/mostro:$MOSTRO_TAG</code></pre>
+      <h4>Alternativa: Docker Compose</h4>
+      <p>Em vez de um comando <code>docker run</code> longo, você pode descrever o contêiner em um arquivo compose. Ele roda a mesma imagem com as mesmas configurações, e atualizar vira trocar o tag em uma linha. Crie <code>~/mostro-docker/compose.yml</code>:</p>
+      <pre><code>services:
+  mostro:
+    image: mostrop2p/mostro:{{version}}
+    container_name: mostro
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # só se o LND roda neste VPS
+    volumes:
+      - \${HOME}/mostro-config:/config</code></pre>
+      <p>Suba e acompanhe os logs:</p>
+      <pre><code>docker compose -f ~/mostro-docker/compose.yml up -d
+docker compose -f ~/mostro-docker/compose.yml logs -f mostro</code></pre>
+      <p>Escolha um: <code>docker run</code> <strong>ou</strong> compose, não os dois. Para atualizar qualquer um deles, veja 5.5.</p>
 
       <div class="callout security">
         <div class="callout-title">🔒 Nota de Segurança</div>
@@ -950,18 +955,43 @@ nostreq --kinds 38385 --limit 1 --authors SUA_MOSTRO_PUBKEY_HEX \\
     'updating': {
       title: `5.5 Atualizando Mostro`,
       nav: `Atualização`,
-      html: `      <p><strong>Docker Hub:</strong></p>
+      html: `      <p>Atualizar substitui o binário <code>mostrod</code> e nada mais: <code>settings.toml</code> e <code>mostro.db</code> ficam onde estão. As migrações do banco de dados rodam sozinhas quando a nova versão inicia, então não há passo extra.</p>
+
+      <h4>Antes de atualizar</h4>
+      <ol>
+        <li><strong>Leia as <a href="https://github.com/MostroP2P/mostro/releases" target="_blank" rel="noopener noreferrer">notas da versão</a></strong> para a qual você vai. Seu <code>settings.toml</code> nunca é sobrescrito, então uma opção nova só tem efeito quando você a adiciona: compare seu arquivo com o novo <code>settings.tpl.toml</code>.</li>
+        <li><strong>Faça backup do banco de dados</strong> com os comandos de 5.6. Você precisa desse backup para voltar atrás.</li>
+      </ol>
+
+      <h4>Docker Hub (<code>docker run</code>)</h4>
       <pre><code>export MOSTRO_TAG={{version}}
+# Baixe primeiro: o nó continua no ar durante o download
+docker pull mostrop2p/mostro:$MOSTRO_TAG
 docker stop mostro
 docker rm mostro
-docker pull mostrop2p/mostro:$MOSTRO_TAG
 docker run -d --name mostro \\
   --restart unless-stopped \\
   --add-host=host.docker.internal:host-gateway \\
   -v ~/mostro-config:/config \\
   mostrop2p/mostro:$MOSTRO_TAG</code></pre>
+      <p>Use as mesmas flags da instalação (remova <code>--add-host</code> se o LND está em outro servidor). Se não lembrar delas, consulte <code>docker inspect mostro</code> antes de remover o contêiner.</p>
 
-      <p><strong>Docker Build:</strong></p>
+      <div class="callout important">
+        <div class="callout-title">⚠️ <code>docker restart</code> não é uma atualização</div>
+        <p><code>docker restart</code> reinicia o mesmo contêiner, com a imagem com que foi criado. Para rodar uma versão nova o contêiner precisa ser criado de novo: <code>docker rm</code> + <code>docker run</code>, ou <code>docker compose up -d</code> depois de trocar o tag.</p>
+      </div>
+
+      <h4>Docker Hub (Docker Compose)</h4>
+      <pre><code>export MOSTRO_TAG={{version}}
+COMPOSE=~/mostro-docker/compose.yml
+# Aponte a linha image para o novo tag e confira
+sed -i "s|image: mostrop2p/mostro:.*|image: mostrop2p/mostro:$MOSTRO_TAG|" $COMPOSE
+grep image: $COMPOSE
+docker compose -f $COMPOSE pull
+# Recria o contêiner porque a imagem mudou
+docker compose -f $COMPOSE up -d</code></pre>
+
+      <h4>Docker Build</h4>
       <pre><code>cd /opt/mostro
 git fetch --tags
 git checkout {{version}}
@@ -969,7 +999,7 @@ make docker-build
 make docker-down
 make docker-up</code></pre>
 
-      <p><strong>Nativo:</strong></p>
+      <h4>Nativo</h4>
       <pre><code>cd /opt/mostro
 git fetch --tags
 git checkout {{version}}
@@ -978,10 +1008,30 @@ install target/release/mostrod /usr/local/bin
 cargo clean
 systemctl restart mostro.service</code></pre>
 
-      <div class="callout tip">
-        <div class="callout-title">💡 Dica</div>
-        <p>Sempre faça backup do banco de dados antes de atualizar.</p>
-      </div>
+      <h4>Verificar a nova versão</h4>
+      <pre><code># Docker Hub (docker run)
+docker exec mostro mostrod --version
+docker logs -f mostro
+
+# Docker Hub (Docker Compose)
+docker compose -f ~/mostro-docker/compose.yml exec mostro mostrod --version
+docker compose -f ~/mostro-docker/compose.yml logs -f mostro
+
+# Docker Build
+docker compose -f /opt/mostro/docker/compose.yml exec mostro mostrod --version
+docker compose -f /opt/mostro/docker/compose.yml logs -f mostro</code></pre>
+      <p>Procure as mesmas mensagens de inicialização da primeira execução (Passo 11 da Opção A).</p>
+
+      <h4>Voltar à versão anterior</h4>
+      <p>Se a nova versão der problemas, volte ao tag anterior. A nova versão pode já ter migrado o banco de dados, e um <code>mostrod</code> mais antigo pode se recusar a iniciar com ele, então restaure o backup feito antes de atualizar:</p>
+      <pre><code>docker stop mostro
+docker rm mostro
+cp /root/mostro-backups/mostro.db.&lt;YYYYMMDD&gt; ~/mostro-config/mostro.db
+rm -f ~/mostro-config/mostro.db-wal ~/mostro-config/mostro.db-shm
+chown 1000:1000 ~/mostro-config/mostro.db
+# depois inicie o tag anterior: mesmo comando docker run,
+# ou volte o tag antigo no compose.yml e rode docker compose up -d</code></pre>
+      <p>Docker Build e nativo funcionam igual: faça checkout do tag anterior, recompile e restaure o banco de dados antes de iniciar.</p>
 
       <div class="callout important">
         <div class="callout-title">⚠️ Não troque de nó Lightning ao mesmo tempo</div>
