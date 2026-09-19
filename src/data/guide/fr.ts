@@ -353,6 +353,8 @@ chmod 600 ~/mostro-config/lnd/mostro.macaroon</code></pre>
 
       <h4>Alternative : Docker Compose</h4>
       <p>Au lieu d'une longue commande <code>docker run</code>, vous pouvez décrire le conteneur dans un fichier compose. Il lance la même image avec les mêmes réglages, et la mise à jour se résume à changer le tag sur une ligne. Créez <code>~/mostro-docker/compose.yml</code> :</p>
+      <pre><code>mkdir -p ~/mostro-docker
+nano ~/mostro-docker/compose.yml</code></pre>
       <pre><code>services:
   mostro:
     image: mostrop2p/mostro:{{version}}
@@ -1019,14 +1021,20 @@ docker compose -f ~/mostro-docker/compose.yml logs -f mostro
 
 # Docker Build
 docker compose -f /opt/mostro/docker/compose.yml exec mostro mostrod --version
-docker compose -f /opt/mostro/docker/compose.yml logs -f mostro</code></pre>
+docker compose -f /opt/mostro/docker/compose.yml logs -f mostro
+
+# Natif
+mostrod --version
+journalctl -u mostro -f</code></pre>
       <p>Cherchez les mêmes messages de démarrage qu'au premier lancement (Étape 11 de l'Option A).</p>
 
       <h4>Revenir en arrière</h4>
       <p>Si la nouvelle version pose problème, revenez au tag précédent. La nouvelle version a peut-être déjà migré la base de données, et un <code>mostrod</code> plus ancien peut refuser de démarrer avec elle : restaurez donc la sauvegarde faite avant la mise à jour :</p>
       <pre><code>docker stop mostro
 docker rm mostro
-cp /root/mostro-backups/mostro.db.&lt;YYYYMMDD&gt; ~/mostro-config/mostro.db
+# remplacez YYYYMMDD par la date de la sauvegarde faite avant la mise à jour
+BACKUP=/root/mostro-backups/mostro.db.YYYYMMDD
+cp "$BACKUP" ~/mostro-config/mostro.db
 rm -f ~/mostro-config/mostro.db-wal ~/mostro-config/mostro.db-shm
 chown 1000:1000 ~/mostro-config/mostro.db
 # puis lancez le tag précédent : même commande docker run,

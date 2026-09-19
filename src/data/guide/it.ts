@@ -353,6 +353,8 @@ chmod 600 ~/mostro-config/lnd/mostro.macaroon</code></pre>
 
       <h4>Alternativa: Docker Compose</h4>
       <p>Invece di un lungo comando <code>docker run</code> puoi descrivere il container in un file compose. Esegue la stessa immagine con le stesse impostazioni, e aggiornare diventa cambiare il tag su una riga. Crea <code>~/mostro-docker/compose.yml</code>:</p>
+      <pre><code>mkdir -p ~/mostro-docker
+nano ~/mostro-docker/compose.yml</code></pre>
       <pre><code>services:
   mostro:
     image: mostrop2p/mostro:{{version}}
@@ -1019,14 +1021,20 @@ docker compose -f ~/mostro-docker/compose.yml logs -f mostro
 
 # Docker Build
 docker compose -f /opt/mostro/docker/compose.yml exec mostro mostrod --version
-docker compose -f /opt/mostro/docker/compose.yml logs -f mostro</code></pre>
+docker compose -f /opt/mostro/docker/compose.yml logs -f mostro
+
+# Nativo
+mostrod --version
+journalctl -u mostro -f</code></pre>
       <p>Cerca gli stessi messaggi di avvio della prima esecuzione (Passo 11 dell'Opzione A).</p>
 
       <h4>Tornare indietro</h4>
       <p>Se la nuova versione dà problemi, torna al tag precedente. La nuova versione potrebbe aver già migrato il database, e un <code>mostrod</code> più vecchio può rifiutarsi di avviarsi con esso, quindi ripristina il backup fatto prima di aggiornare:</p>
       <pre><code>docker stop mostro
 docker rm mostro
-cp /root/mostro-backups/mostro.db.&lt;YYYYMMDD&gt; ~/mostro-config/mostro.db
+# sostituisci YYYYMMDD con la data del backup fatto prima di aggiornare
+BACKUP=/root/mostro-backups/mostro.db.YYYYMMDD
+cp "$BACKUP" ~/mostro-config/mostro.db
 rm -f ~/mostro-config/mostro.db-wal ~/mostro-config/mostro.db-shm
 chown 1000:1000 ~/mostro-config/mostro.db
 # poi avvia il tag precedente: stesso comando docker run,
