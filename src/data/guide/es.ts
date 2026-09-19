@@ -351,16 +351,23 @@ chmod 600 ~/mostro-config/lnd/mostro.macaroon</code></pre>
 
       <p>🎉 <strong>¡Felicitaciones!</strong> Si ves conexiones exitosas en los logs, ¡tu nodo Mostro está funcionando!</p>
 
-      <h4>Actualización (Docker Hub)</h4>
-      <pre><code>export MOSTRO_TAG={{version}}
-docker pull mostrop2p/mostro:$MOSTRO_TAG
-docker stop mostro
-docker rm mostro
-docker run -d --name mostro \\
-  --restart unless-stopped \\
-  --add-host=host.docker.internal:host-gateway \\
-  -v ~/mostro-config:/config \\
-  mostrop2p/mostro:$MOSTRO_TAG</code></pre>
+      <h4>Alternativa: Docker Compose</h4>
+      <p>En lugar de un comando <code>docker run</code> largo, puedes describir el contenedor en un archivo compose. Corre la misma imagen con la misma configuración, y actualizar se reduce a cambiar el tag en una línea. Crea <code>~/mostro-docker/compose.yml</code>:</p>
+      <pre><code>mkdir -p ~/mostro-docker
+nano ~/mostro-docker/compose.yml</code></pre>
+      <pre><code>services:
+  mostro:
+    image: mostrop2p/mostro:{{version}}
+    container_name: mostro
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # solo si LND corre en este VPS
+    volumes:
+      - \${HOME}/mostro-config:/config</code></pre>
+      <p>Levántalo y sigue los logs:</p>
+      <pre><code>docker compose -f ~/mostro-docker/compose.yml up -d
+docker compose -f ~/mostro-docker/compose.yml logs -f mostro</code></pre>
+      <p>Elige uno: <code>docker run</code> <strong>o</strong> compose, no ambos. Para actualizar cualquiera de los dos, ve a 5.5.</p>
 
       <div class="callout security">
         <div class="callout-title">🔒 Nota de Seguridad</div>
@@ -950,18 +957,43 @@ nostreq --kinds 38385 --limit 1 --authors TU_MOSTRO_PUBKEY_HEX \\
     'updating': {
       title: `5.5 Actualizando Mostro`,
       nav: `Actualización`,
-      html: `      <p><strong>Docker Hub:</strong></p>
+      html: `      <p>Actualizar reemplaza el binario <code>mostrod</code> y nada más: <code>settings.toml</code> y <code>mostro.db</code> se quedan donde están. Las migraciones de la base de datos se aplican solas cuando arranca la nueva versión, así que no hay pasos extra.</p>
+
+      <h4>Antes de actualizar</h4>
+      <ol>
+        <li><strong>Lee las <a href="https://github.com/MostroP2P/mostro/releases" target="_blank" rel="noopener noreferrer">notas de la versión</a></strong> a la que vas a actualizar. Tu <code>settings.toml</code> nunca se sobrescribe, así que una opción nueva solo tiene efecto cuando la agregas: compara tu archivo con el nuevo <code>settings.tpl.toml</code>.</li>
+        <li><strong>Respalda la base de datos</strong> con los comandos de 5.6. Necesitas ese respaldo para volver atrás.</li>
+      </ol>
+
+      <h4>Docker Hub (<code>docker run</code>)</h4>
       <pre><code>export MOSTRO_TAG={{version}}
+# Primero descarga: el nodo sigue funcionando durante la descarga
+docker pull mostrop2p/mostro:$MOSTRO_TAG
 docker stop mostro
 docker rm mostro
-docker pull mostrop2p/mostro:$MOSTRO_TAG
 docker run -d --name mostro \\
   --restart unless-stopped \\
   --add-host=host.docker.internal:host-gateway \\
   -v ~/mostro-config:/config \\
   mostrop2p/mostro:$MOSTRO_TAG</code></pre>
+      <p>Usa los mismos flags con los que instalaste (quita <code>--add-host</code> si LND está en otro servidor). Si no los recuerdas, revisa <code>docker inspect mostro</code> antes de borrar el contenedor.</p>
 
-      <p><strong>Docker Build:</strong></p>
+      <div class="callout important">
+        <div class="callout-title">⚠️ <code>docker restart</code> no es una actualización</div>
+        <p><code>docker restart</code> vuelve a arrancar el mismo contenedor, con la imagen con la que fue creado. Para correr una versión nueva hay que crear el contenedor otra vez: <code>docker rm</code> + <code>docker run</code>, o <code>docker compose up -d</code> después de cambiar el tag.</p>
+      </div>
+
+      <h4>Docker Hub (Docker Compose)</h4>
+      <pre><code>export MOSTRO_TAG={{version}}
+COMPOSE=~/mostro-docker/compose.yml
+# Apunta la línea image al nuevo tag y verifícala
+sed -i "s|image: mostrop2p/mostro:.*|image: mostrop2p/mostro:$MOSTRO_TAG|" $COMPOSE
+grep image: $COMPOSE
+docker compose -f $COMPOSE pull
+# Recrea el contenedor porque cambió la imagen
+docker compose -f $COMPOSE up -d</code></pre>
+
+      <h4>Docker Build</h4>
       <pre><code>cd /opt/mostro
 git fetch --tags
 git checkout {{version}}
@@ -969,7 +1001,7 @@ make docker-build
 make docker-down
 make docker-up</code></pre>
 
-      <p><strong>Nativo:</strong></p>
+      <h4>Nativo</h4>
       <pre><code>cd /opt/mostro
 git fetch --tags
 git checkout {{version}}
@@ -978,10 +1010,36 @@ install target/release/mostrod /usr/local/bin
 cargo clean
 systemctl restart mostro.service</code></pre>
 
-      <div class="callout tip">
-        <div class="callout-title">💡 Consejo</div>
-        <p>Siempre respalda tu base de datos antes de actualizar.</p>
-      </div>
+      <h4>Verificar la nueva versión</h4>
+      <pre><code># Docker Hub (docker run)
+docker exec mostro mostrod --version
+docker logs -f mostro
+
+# Docker Hub (Docker Compose)
+docker compose -f ~/mostro-docker/compose.yml exec mostro mostrod --version
+docker compose -f ~/mostro-docker/compose.yml logs -f mostro
+
+# Docker Build
+docker compose -f /opt/mostro/docker/compose.yml exec mostro mostrod --version
+docker compose -f /opt/mostro/docker/compose.yml logs -f mostro
+
+# Nativo
+mostrod --version
+journalctl -u mostro -f</code></pre>
+      <p>Busca los mismos mensajes de arranque que en la primera ejecución (Paso 11 de la Opción A).</p>
+
+      <h4>Volver a la versión anterior</h4>
+      <p>Si la nueva versión se comporta mal, vuelve al tag anterior. La nueva versión puede haber migrado ya la base de datos, y un <code>mostrod</code> más viejo puede negarse a arrancar con ella, así que restaura el respaldo que hiciste antes de actualizar:</p>
+      <pre><code>docker stop mostro
+docker rm mostro
+# reemplaza YYYYMMDD por la fecha del respaldo hecho antes de actualizar
+BACKUP=/root/mostro-backups/mostro.db.YYYYMMDD
+cp "$BACKUP" ~/mostro-config/mostro.db
+rm -f ~/mostro-config/mostro.db-wal ~/mostro-config/mostro.db-shm
+chown 1000:1000 ~/mostro-config/mostro.db
+# luego arranca el tag anterior: mismo comando docker run,
+# o vuelve a poner el tag viejo en compose.yml y corre docker compose up -d</code></pre>
+      <p>Docker Build y nativo funcionan igual: haz checkout del tag anterior, recompila y restaura la base de datos antes de arrancar.</p>
 
       <div class="callout important">
         <div class="callout-title">⚠️ No cambies de nodo Lightning al mismo tiempo</div>
